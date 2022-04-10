@@ -125,6 +125,7 @@ def get_rmdse_of_lists(historical_list, recommend_list, top_k, dimensions):
   """
   historical_diversity = get_diversity_of_list(historical_list, d=dimensions)
   recommend_diversity = get_diversity_of_list(recommend_list, d=dimensions)
+  print(f'历史多样性: {historical_diversity} 推荐多样性: {recommend_diversity}')
   return np.sqrt(np.square((historical_diversity - recommend_diversity)) / top_k)
 
 
@@ -150,7 +151,7 @@ def get_exp_list(exp_type):
   d_list = [3, 4, 5, 6, 7, 8]
   top_k = [8]
   # 3, 4, 5, 6, 7,
-  if exp_type == 'test':
+  if exp_type == 'real':
     return list(product(t_list, d_list, top_k))
   else:
     return list(product(r_list, d_list, top_k))
@@ -180,21 +181,61 @@ def dpp_eva(dimension, topK, con, can, historiesList, fu=1, alpha=0.9):
   return resultIndex, DCG, Diversity, RMDSE
 
 
+def rs_eva(dimension, topK, con, can, hlist):
+  """
+  使用 RankingScore 方式评估推荐结果
+  :param dimension: 向量的维度
+  :param topK: 结果数量
+  :param con: 约束集合
+  :param can: 候选集合
+  :param hlist: 历史调用记录
+  :return: 推荐物品下标，准确性，多样性，均方根误差
+  """
+  scores = np.asarray([get_similarity(con, item, dimension) for item in can])
+  # 从 score 中选择分数最高的 topK 个item
+  result_index = np.argsort(scores)[::-1][:topK]
+  result = can[result_index]
+  DCG = get_dcg_value(con, result, dimension)
+  Diversity = get_diversity_of_list(result, dimension)
+  RMDSE = get_rmdse_of_lists(hlist, result, topK, dimension)
+  return result_index, DCG, Diversity, RMDSE
+  pass
+
+
 if __name__ == '__main__':
   constraints, candidates, histories = load_data(data_path)
   logging.critical(f'数据加载完成，约束集:{constraints.shape}, 候选集：{candidates.shape}, 用户调用记录:{len(histories)}')
-  exp_list = get_exp_list('real')
+  exp_list = get_exp_list('test')
   ############参数构建############
   historiesList = histories[0]
 
   ############使用 DPP 模型评估############
-  dpp_res = {}
-  logging.critical(f'开始使用 DPP 算法计算推荐结果')
+  # dpp_res = {}
+  # logging.critical(f'开始使用 DPP 算法计算推荐结果')
+  # for (n, d, k) in exp_list:
+  #   constraint = constraints[0, :d]
+  #   candidate = candidates[:n, :d]
+  #   indexs, dcg, div, rmdse = dpp_eva(d, k, constraint, candidate, historiesList[,:d])
+  #   dpp_res[f'dpp_{n}_{d}_{k}'] = {
+  #     "n": n,
+  #     "d": d,
+  #     "k": k,
+  #     "indexs": indexs,
+  #     "dcg": dcg,
+  #     "div": div,
+  #     "rmdse": rmdse
+  #   }
+  # logging.critical(f'DPP 计算完成， 结果共 {len(dpp_res)} 条')
+  # pd.DataFrame(dpp_res).to_json(f'data/dpp_res_{get_local_time()}.json')
+  # logging.critical("DPP 结果保存完成")
+  ############使用 Ranking Score模型评估############
+  rs_res = {}
+  logging.critical(f'开始使用 RankingScore 算法计算推荐结果')
   for (n, d, k) in exp_list:
     constraint = constraints[0, :d]
     candidate = candidates[:n, :d]
-    indexs, dcg, div, rmdse = dpp_eva(d, k, constraint, candidate, historiesList)
-    dpp_res[f'dpp_{n}_{d}_{k}'] = {
+    indexs, dcg, div, rmdse = rs_eva(d, k, constraint, candidate, historiesList[:d])
+    rs_res[f'rs_{n}_{d}_{k}'] = {
       "n": n,
       "d": d,
       "k": k,
@@ -203,12 +244,8 @@ if __name__ == '__main__':
       "div": div,
       "rmdse": rmdse
     }
-  logging.critical(f'DPP 计算完成， 结果共 {len(dpp_res)} 条')
-  pd.DataFrame(dpp_res).to_json(f'data/dpp_res_{get_local_time()}.json')
-  logging.critical("DPP 结果保存完成")
-  ############使用 Ranking Score模型评估############
-  rs_res = {}
-  logging.critical(f'开始使用 RankingScore 算法计算推荐结果')
-
+  logging.critical(f'Ranking Score 计算完成，结果共 {len(rs_res)} 条')
+  pd.DataFrame(rs_res).to_json(f'data/rs_res_{get_local_time()}.json')
+  logging.critical('Ranking Score 结果保存完成')
   ############使用 pDPP 模型评估############
   pdpp_res = {}
