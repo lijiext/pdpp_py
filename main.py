@@ -6,6 +6,7 @@ import numpy as np, math, time
 from itertools import combinations, permutations, product
 from scipy import spatial
 from scipy import stats
+from collections import Counter
 
 # 定义预先处理好的数据路径
 data_path = 'data/data_20220410011614.npz'
@@ -33,6 +34,33 @@ def get_similarity(item1, item2, dimensions, alpha=0.5):
   tau, p = stats.kendalltau(item1, item2)
   similarity = alpha * (1.0 - distance / np.sqrt(dimensions)) + (1.0 - alpha) * tau
   return similarity
+
+
+def get_shannon_entropies(user_call_histories):
+  """
+  获取用户访问历史的 Shannon Entropy 香浓信息熵，表示用户的多样性需求
+  :param user_call_histories: 用户的服务调用历史记录
+  :rtype list: 服务调用记录的熵值列表
+  """
+  indexs = [[np.argmax(i) for i in item] for item in user_call_histories]
+  shannon_entropies = []
+  for item in indexs:
+    shannon_entropy = np.abs(
+      sum([count / len(item) * (np.math.log2(count / len(item))) for count in Counter(item).values()]))
+    shannon_entropies.append(shannon_entropy)
+  return np.asarray(shannon_entropies)
+
+
+def get_diversity_parameter(shannon_entropies, H0=1):
+  """
+  根据服务调用历史记录信息熵计算多样性程度
+  :param shannon_entropies: 用户的服务调用历史记录多样性熵值列表
+  :param H0: 超参数
+  :return: 每一个用户的多样化参数列表
+  """
+  H_max = np.max(shannon_entropies)
+  H_min = np.min(shannon_entropies)
+  return np.asarray([(item - H_min + H0) / (H_max - H_min + H0) for item in shannon_entropies])
 
 
 def get_kernel_matrix(Constraint, Candidates, dimensions, fu=1, alpha=0.9):
@@ -165,8 +193,8 @@ def dpp_eva(dimension, topK, con, can, historiesList, fu=1, alpha=0.9):
   根据约束集和候选集，以及 topK 和 数据维度，评估 DPP 模型的 准确度、多样性、偏好一致性
   :param dimension: 考虑向量的维度
   :param topK: 推荐物品的数量
-  :param constraint: 约束集
-  :param candidate: 候选集
+  :param can: 候选集合
+  :param con: 约束集合
   :param historiesList: 用户的历史调用记录
   :param fu: 个性化参数
   :param alpha: 个性话超参数
@@ -215,7 +243,7 @@ if __name__ == '__main__':
   # for (n, d, k) in exp_list:
   #   constraint = constraints[0, :d]
   #   candidate = candidates[:n, :d]
-  #   indexs, dcg, div, rmdse = dpp_eva(d, k, constraint, candidate, historiesList[,:d])
+  #   indexs, dcg, div, rmdse = dpp_eva(d, k, constraint, candidate, historiesList[:,:d])
   #   dpp_res[f'dpp_{n}_{d}_{k}'] = {
   #     "n": n,
   #     "d": d,
@@ -229,13 +257,35 @@ if __name__ == '__main__':
   # pd.DataFrame(dpp_res).to_json(f'data/dpp_res_{get_local_time()}.json')
   # logging.critical("DPP 结果保存完成")
   ############使用 Ranking Score模型评估############
-  rs_res = {}
-  logging.critical(f'开始使用 RankingScore 算法计算推荐结果')
+  # rs_res = {}
+  # logging.critical(f'开始使用 RankingScore 算法计算推荐结果')
+  # for (n, d, k) in exp_list:
+  #   constraint = constraints[0, :d]
+  #   candidate = candidates[:n, :d]
+  #   indexs, dcg, div, rmdse = rs_eva(d, k, constraint, candidate, historiesList[:,:d])
+  #   rs_res[f'rs_{n}_{d}_{k}'] = {
+  #     "n": n,
+  #     "d": d,
+  #     "k": k,
+  #     "indexs": indexs,
+  #     "dcg": dcg,
+  #     "div": div,
+  #     "rmdse": rmdse
+  #   }
+  # logging.critical(f'Ranking Score 计算完成，结果共 {len(rs_res)} 条')
+  # pd.DataFrame(rs_res).to_json(f'data/rs_res_{get_local_time()}.json')
+  # logging.critical('Ranking Score 结果保存完成')
+  ############使用 pDPP 模型评估############
+  pdpp_res = {}
+  logging.critical(f'开始使用 PDPP 方法计算推荐结果')
+  shannon_entropies = get_shannon_entropies(histories)
+  fus = get_diversity_parameter(shannon_entropies, H0=1)
   for (n, d, k) in exp_list:
     constraint = constraints[0, :d]
     candidate = candidates[:n, :d]
-    indexs, dcg, div, rmdse = rs_eva(d, k, constraint, candidate, historiesList[:d])
-    rs_res[f'rs_{n}_{d}_{k}'] = {
+    fu = fus[0]
+    indexs, dcg, div, rmdse = dpp_eva(d, k, constraint, candidate, historiesList[:, :d], fu=fu)
+    pdpp_res[f'dpp_{n}_{d}_{k}'] = {
       "n": n,
       "d": d,
       "k": k,
@@ -244,8 +294,6 @@ if __name__ == '__main__':
       "div": div,
       "rmdse": rmdse
     }
-  logging.critical(f'Ranking Score 计算完成，结果共 {len(rs_res)} 条')
-  pd.DataFrame(rs_res).to_json(f'data/rs_res_{get_local_time()}.json')
-  logging.critical('Ranking Score 结果保存完成')
-  ############使用 pDPP 模型评估############
-  pdpp_res = {}
+  logging.critical(f'PDPP 计算完成， 结果共 {len(pdpp_res)} 条')
+  pd.DataFrame(pdpp_res).to_json(f'data/pdpp_res_{get_local_time()}.json')
+  logging.critical("PDPP 结果保存完成")
