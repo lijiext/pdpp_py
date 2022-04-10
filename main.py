@@ -208,6 +208,7 @@ if __name__ == '__main__':
   logging.critical("DPP 结果保存完成")
   ############使用 Ranking Score模型评估############
   rs_res = {}
+  logging.critical(f'开始使用 RankingScore 算法计算推荐结果')
 
   ############使用 pDPP 模型评估############
   pdpp_res = {}
