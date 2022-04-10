@@ -153,7 +153,7 @@ def get_rmdse_of_lists(historical_list, recommend_list, top_k, dimensions):
   """
   historical_diversity = get_diversity_of_list(historical_list, d=dimensions)
   recommend_diversity = get_diversity_of_list(recommend_list, d=dimensions)
-  print(f'历史多样性: {historical_diversity} 推荐多样性: {recommend_diversity}')
+  # print(f'历史多样性: {historical_diversity} 推荐多样性: {recommend_diversity}')
   return np.sqrt(np.square((historical_diversity - recommend_diversity)) / top_k)
 
 
